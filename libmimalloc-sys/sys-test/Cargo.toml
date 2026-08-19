@@ -2,19 +2,19 @@
 name = "libmimalloc-sys-test"
 version = "0.1.0"
 authors = ["Thom Chiovoloni <tchiovoloni@mozilla.com>"]
-edition = "2018"
-description = "Bindings test for libmimalloc-sys"
+edition = "2024"
+description = "Bindings test for libmimalloc-sys3"
 license = "MIT"
 publish = false
 
 [dependencies]
-libmimalloc-sys = { path = ".." }
+libmimalloc-sys3 = { path = ".." }
 libc = "0.2"
 
 [build-dependencies]
-ctest2 = "0.4"
+ctest = "0.5"
 
 [features]
-secure = ["libmimalloc-sys/secure"]
-extended = ["libmimalloc-sys/extended"]
-v2 = ["libmimalloc-sys/v2"]
+secure = ["libmimalloc-sys3/secure"]
+extended = ["libmimalloc-sys3/extended"]
+v2 = ["libmimalloc-sys3/v2"]

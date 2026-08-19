@@ -1,0 +1,172 @@
+name: Update mimalloc
+
+on:
+  schedule:
+    # Upstream releases cannot trigger workflows in this repository, so poll
+    # for new stable tags four times a day.
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-mimalloc
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update mimalloc v${{ matrix.major }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        major: [2, 3]
+
+    env:
+      MIMALLOC_MAJOR: ${{ matrix.major }}
+      UPSTREAM_REPOSITORY: https://github.com/microsoft/mimalloc.git
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          # An optional GitHub App or fine-grained PAT can be used when this
+          # repository does not allow github.token to create pull requests.
+          token: ${{ secrets.MIMALLOC_UPDATE_TOKEN || github.token }}
+
+      - name: Update mimalloc submodule
+        id: update
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          submodule_dir="libmimalloc-sys/c_src/mimalloc/v${MIMALLOC_MAJOR}"
+          current_sha="$(git -C "${submodule_dir}" rev-parse HEAD)"
+          remote_tags="$(
+            git ls-remote --tags "${UPSTREAM_REPOSITORY}" "v${MIMALLOC_MAJOR}.*"
+          )"
+
+          latest_version="$({
+            printf '%s\n' "${remote_tags}" |
+              awk -v major="${MIMALLOC_MAJOR}" '
+                BEGIN { pattern = "^refs/tags/v" major "\\.[0-9]+\\.[0-9]+$" }
+                $2 ~ pattern { sub("refs/tags/", "", $2); print $2 }
+              ' |
+              sort -V |
+              tail -n 1
+          })"
+
+          if [[ -z "${latest_version}" ]]; then
+            echo "No stable v${MIMALLOC_MAJOR} release tag was found upstream." >&2
+            exit 1
+          fi
+
+          current_version="$({
+            printf '%s\n' "${remote_tags}" |
+              awk -v major="${MIMALLOC_MAJOR}" -v sha="${current_sha}" '
+                BEGIN { pattern = "^refs/tags/v" major "\\.[0-9]+\\.[0-9]+(\\^\\{\\})?$" }
+                $1 == sha && $2 ~ pattern {
+                  sub("refs/tags/", "", $2)
+                  sub("\\^\\{\\}$", "", $2)
+                  print $2
+                  exit
+                }
+              '
+          })"
+          current_version="${current_version:-${current_sha:0:7}}"
+
+          # Checkout initializes submodules shallowly and may not include their
+          # tags. Fetch the chosen tag before comparing commit IDs so an already
+          # current submodule remains a true no-op.
+          git -C "${submodule_dir}" fetch --depth=1 origin \
+            "refs/tags/${latest_version}:refs/tags/${latest_version}"
+          latest_sha="$(git -C "${submodule_dir}" rev-parse "${latest_version}^{commit}")"
+
+          echo "previous=${current_version}" >> "${GITHUB_OUTPUT}"
+          echo "latest=${latest_version}" >> "${GITHUB_OUTPUT}"
+
+          if [[ "${current_sha}" == "${latest_sha}" ]]; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "mimalloc v${MIMALLOC_MAJOR} is already at ${latest_version}."
+            exit 0
+          fi
+
+          git -C "${submodule_dir}" checkout --detach "${latest_version}"
+
+          echo "changed=true" >> "${GITHUB_OUTPUT}"
+          echo "Updating mimalloc v${MIMALLOC_MAJOR}: ${current_version} -> ${latest_version}."
+
+      - name: Commit update and create pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.MIMALLOC_UPDATE_TOKEN || github.token }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          PREVIOUS_VERSION: ${{ steps.update.outputs.previous }}
+          LATEST_VERSION: ${{ steps.update.outputs.latest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          submodule_dir="libmimalloc-sys/c_src/mimalloc/v${MIMALLOC_MAJOR}"
+          branch_name="automation/update-mimalloc-v${MIMALLOC_MAJOR}"
+          remote_ref="refs/heads/${branch_name}"
+          title="Bump mimalloc v${MIMALLOC_MAJOR} to ${LATEST_VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${submodule_dir}"
+          git commit -m "${title}"
+
+          pr_number="$(
+            gh pr list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${BASE_BRANCH}" \
+              --head "${branch_name}" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          # Replace only this workflow's dedicated branch, protecting it from a
+          # concurrent or out-of-band update with an explicit lease.
+          remote_sha="$(git ls-remote --heads origin "${remote_ref}" | awk '{print $1}')"
+          if [[ -n "${remote_sha}" ]]; then
+            git fetch --no-tags origin "${remote_ref}"
+
+            # While a PR is waiting to be merged, the default branch still has
+            # the old submodule pointer. Do not recreate the same commit and
+            # force-push it every time the scheduled workflow runs.
+            if [[ -n "${pr_number}" ]] && \
+              git diff --quiet "${remote_sha}" HEAD -- "${submodule_dir}"; then
+              echo "Pull request #${pr_number} already contains ${LATEST_VERSION}."
+              exit 0
+            fi
+
+            git push --force-with-lease="${remote_ref}:${remote_sha}" \
+              origin "HEAD:${remote_ref}"
+          else
+            git push origin "HEAD:${remote_ref}"
+          fi
+
+          printf -v pr_body \
+            'Updates the bundled mimalloc v%s submodule to the latest stable upstream release.\n\n- Previous: `%s`\n- Latest: `%s`\n- Upstream: https://github.com/microsoft/mimalloc/releases/tag/%s' \
+            "${MIMALLOC_MAJOR}" "${PREVIOUS_VERSION}" "${LATEST_VERSION}" "${LATEST_VERSION}"
+
+          if [[ -n "${pr_number}" ]]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" \
+              -f title="${title}" \
+              -f body="${pr_body}" >/dev/null
+            echo "Updated pull request #${pr_number}."
+          else
+            gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${BASE_BRANCH}" \
+              --head "${branch_name}" \
+              --title "${title}" \
+              --body "${pr_body}"
+          fi

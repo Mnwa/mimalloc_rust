@@ -1,7 +1,7 @@
 use crate::MiMalloc;
 use core::ffi::c_void;
 #[cfg(not(feature = "v2"))]
-use core::ffi::{c_char, CStr};
+use core::ffi::{CStr, c_char};
 
 impl MiMalloc {
     /// Get the mimalloc version.
@@ -17,7 +17,7 @@ impl MiMalloc {
     /// `ptr` must point to a memory block allocated by mimalloc, or be null.
     #[inline]
     pub unsafe fn usable_size(&self, ptr: *const u8) -> usize {
-        ffi::mi_usable_size(ptr as *const c_void)
+        unsafe { ffi::mi_usable_size(ptr as *const c_void) }
     }
 
     /// Extract a string containing the JSON statistics for the whole process
@@ -49,10 +49,7 @@ impl core::ops::Deref for StatsJson {
     type Target = CStr;
 
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            let cstr = CStr::from_ptr(self.inner.as_ptr());
-            &cstr
-        }
+        unsafe { CStr::from_ptr(self.inner.as_ptr()) }
     }
 }
 

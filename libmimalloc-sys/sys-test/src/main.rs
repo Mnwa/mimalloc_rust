@@ -1,5 +1,5 @@
-#![allow(bad_style, unused_imports, unused_macros, clippy::all)]
+#![allow(bad_style, dead_code, unused_imports, unused_macros, clippy::all)]
 
-use libmimalloc_sys::*;
+use libmimalloc_sys3::*;
 
 include!(concat!(env!("OUT_DIR"), "/all.rs"));

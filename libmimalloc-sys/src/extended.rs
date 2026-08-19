@@ -1,14 +1,12 @@
 #![allow(nonstandard_style)]
 
-use core::ffi::c_void;
-
-use cty::{c_char, c_int, c_long, c_ulonglong};
+use core::ffi::{c_char, c_int, c_long, c_ulonglong, c_void};
 
 /// The maximum number of bytes which may be used as an argument to a function
 /// in the `_small` family ([`mi_malloc_small`], [`mi_zalloc_small`], etc).
 pub const MI_SMALL_SIZE_MAX: usize = 128 * core::mem::size_of::<*mut c_void>();
 
-extern "C" {
+unsafe extern "C" {
     /// Allocate `count` items of `size` length each.
     ///
     /// Returns `null` if `count * size` overflows or on out-of-memory.
@@ -244,7 +242,7 @@ extern "C" {
     /// This function is described by the mimalloc documentation as "relatively
     /// fast".
     ///
-    /// See also [`mi_heap_check_owned`], which is (much) slower and slightly
+    /// See also `mi_heap_check_owned`, which is (much) slower and slightly
     /// more precise, but only concerns a single `mi_heap`.
     pub fn mi_is_in_heap_region(p: *const c_void) -> bool;
 
@@ -300,7 +298,7 @@ extern "C" {
     /// function or stderr by default.
     ///
     /// Most detailed when using a debug build.
-    pub fn mi_stats_print(_: *mut c_void);
+    pub fn mi_stats_print(out: *mut c_void);
 
     /// Print the main statistics.
     ///
@@ -568,7 +566,7 @@ pub const _mi_option_last: mi_option_t = 38;
 #[cfg(not(feature = "v2"))]
 pub const _mi_option_last: mi_option_t = 47;
 
-extern "C" {
+unsafe extern "C" {
     // Note: mi_option_{enable,disable} aren't exposed because they're redundant
     // and because of https://github.com/microsoft/mimalloc/issues/266.
 
@@ -598,7 +596,7 @@ extern "C" {
     /// These options are not exposed as constants for stability reasons,
     /// however you can still use them as arguments to this and other
     /// `mi_option_` functions if needed, see the mimalloc documentation for
-    /// details: https://microsoft.github.io/mimalloc/group__options.html
+    /// details: <https://microsoft.github.io/mimalloc/group__options.html>
     ///
     /// Note: this function is not thread safe.
     pub fn mi_option_get(option: mi_option_t) -> c_long;
@@ -640,7 +638,7 @@ extern "C" {
 /// # Example
 ///
 /// ```
-/// use libmimalloc_sys as mi;
+/// use libmimalloc_sys3 as mi;
 /// unsafe {
 ///     let h = mi::mi_heap_new();
 ///     assert!(!h.is_null());
@@ -705,7 +703,7 @@ pub type mi_block_visit_fun = Option<
     ) -> bool,
 >;
 
-extern "C" {
+unsafe extern "C" {
     /// Create a new heap that can be used for allocation.
     pub fn mi_heap_new() -> *mut mi_heap_t;
 
@@ -969,7 +967,7 @@ extern "C" {
     ///
     /// Note: expensive function, linear in the pages in the heap.
     ///
-    /// See [`mi_heap_contains_block`], [`mi_heap_get_default`]
+    /// See `mi_heap_contains_block` and `mi_heap_get_default`.
     pub fn mi_check_owned(p: *const c_void) -> bool;
 
     /// Visit all areas and blocks in `heap`.

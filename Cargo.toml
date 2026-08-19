@@ -1,16 +1,17 @@
 [package]
-name = "mimalloc"
-version = "0.1.52"
+name = "mimalloc3"
+version = "0.1.53"
 authors = [
     "Octavian Oncescu <octavonce@gmail.com>",
     "Vincent Rouillé <vincent@speedy37.fr>",
     "Thom Chiovoloni <chiovolonit@gmail.com>",
+    "Mnwa <mihan@panfilov.biz>",
 ]
-edition = "2018"
+edition = "2024"
 repository = "https://github.com/purpleprotocol/mimalloc_rust"
 keywords = ["mimalloc", "allocator", "encrypted-heap", "performance"]
 categories = ["memory-management", "api-bindings"]
-description = "Performance and security oriented drop-in allocator"
+description = "Rust 2024 drop-in allocator backed by the latest stable mimalloc v3, with optional v2 support"
 license = "MIT"
 readme = "README.md"
 
@@ -21,21 +22,18 @@ members = [
     "test-override-with-dylib",
 ]
 
-[badges]
-travis-ci = { repository = "purpleprotocol/mimalloc_rust" }
-
 [dependencies]
-libmimalloc-sys = { path = "libmimalloc-sys", version = "0.1.49", default-features = false }
+libmimalloc-sys3 = { path = "libmimalloc-sys", version = "0.1.50", default-features = false }
 
 [features]
 default = []
-secure = ["libmimalloc-sys/secure"]
-override = ["libmimalloc-sys/override"]
-debug = ["libmimalloc-sys/debug"]
-debug_in_debug = ["libmimalloc-sys/debug_in_debug"]
-local_dynamic_tls = ["libmimalloc-sys/local_dynamic_tls"]
-nightly_allocator_api = [ "extended" ]
-win_direct_tls = ["libmimalloc-sys/win_direct_tls"]
-no_thp = ["libmimalloc-sys/no_thp"]
-extended = ["libmimalloc-sys/extended"]
-v2 = ["libmimalloc-sys/v2"]
+secure = ["libmimalloc-sys3/secure"]
+override = ["libmimalloc-sys3/override"]
+debug = ["libmimalloc-sys3/debug"]
+debug_in_debug = ["libmimalloc-sys3/debug_in_debug"]
+local_dynamic_tls = ["libmimalloc-sys3/local_dynamic_tls"]
+nightly_allocator_api = ["extended"]
+win_direct_tls = ["libmimalloc-sys3/win_direct_tls"]
+no_thp = ["libmimalloc-sys3/no_thp"]
+extended = ["libmimalloc-sys3/extended"]
+v2 = ["libmimalloc-sys3/v2"]

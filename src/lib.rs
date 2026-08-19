@@ -9,7 +9,7 @@
 //!
 //! ## Usage
 //! ```rust,ignore
-//! use mimalloc::MiMalloc;
+//! use mimalloc3::MiMalloc;
 //!
 //! #[global_allocator]
 //! static GLOBAL: MiMalloc = MiMalloc;
@@ -24,10 +24,10 @@
 //! To enable secure mode, put in `Cargo.toml`:
 //! ```toml
 //! [dependencies]
-//! mimalloc = { version = "*", features = ["secure"] }
+//! mimalloc3 = { version = "*", features = ["secure"] }
 //! ```
 
-extern crate libmimalloc_sys as ffi;
+extern crate libmimalloc_sys3 as ffi;
 
 #[cfg(feature = "extended")]
 mod extended;
@@ -43,7 +43,7 @@ use ffi::*;
 ///
 /// ## Usage
 /// ```rust,ignore
-/// use mimalloc::MiMalloc;
+/// use mimalloc3::MiMalloc;
 ///
 /// #[global_allocator]
 /// static GLOBAL: MiMalloc = MiMalloc;
@@ -53,22 +53,22 @@ pub struct MiMalloc;
 unsafe impl GlobalAlloc for MiMalloc {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        mi_malloc_aligned(layout.size(), layout.align()) as *mut u8
+        unsafe { mi_malloc_aligned(layout.size(), layout.align()) as *mut u8 }
     }
 
     #[inline]
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        mi_zalloc_aligned(layout.size(), layout.align()) as *mut u8
+        unsafe { mi_zalloc_aligned(layout.size(), layout.align()) as *mut u8 }
     }
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        mi_free(ptr as *mut c_void);
+        unsafe { mi_free(ptr as *mut c_void) };
     }
 
     #[inline]
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        mi_realloc_aligned(ptr as *mut c_void, new_size, layout.align()) as *mut u8
+        unsafe { mi_realloc_aligned(ptr as *mut c_void, new_size, layout.align()) as *mut u8 }
     }
 }
 

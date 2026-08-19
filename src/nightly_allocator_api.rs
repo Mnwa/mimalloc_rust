@@ -1,7 +1,7 @@
 use crate::MiMalloc;
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ffi::c_void;
-use core::ptr::{write_bytes, NonNull};
+use core::ptr::{NonNull, write_bytes};
 use ffi::*;
 
 impl MiMalloc {

@@ -18,7 +18,7 @@ fn main() {
         "v3"
     };
 
-    let mut cfg = ctest2::TestGenerator::new();
+    let mut cfg = ctest::TestGenerator::new();
     cfg.header("mimalloc.h")
         .include(format!(
             "{cargo_manifest_dir}/../c_src/mimalloc/{version}/include"
@@ -26,11 +26,12 @@ fn main() {
         .cfg("feature", secure)
         .cfg("feature", extended)
         .cfg("feature", (version == "v2").then_some("v2"))
-        .fn_cname(|rust, link_name| link_name.unwrap_or(rust).to_string())
+        .edition(2024)
+        .rename_fn(|function| function.link_name().map(str::to_owned))
         // ignore whether or not the option enum is signed.
         .skip_signededness(|c| c.ends_with("_t") || c.ends_with("_e"))
-        .type_name(|ty, _is_struct, _is_union| {
-            match ty {
+        .rename_type(|ty| {
+            Some(match ty {
                 // Special cases. We do this to avoid having both
                 // `mi_blah_{s,e}` and `mi_blah_t`.
                 "mi_heap_area_t" => "struct mi_heap_area_s".into(),
@@ -51,9 +52,10 @@ fn main() {
                 // be declared as pointers, so we clean things up for it.
                 t if t.ends_with("_fun") => format!("{}*", t),
 
-                t => t.to_string(),
-            }
-        });
+                _ => return None,
+            })
+        })
+        .rename_struct_ty(|ty| (ty == "mi_heap_area_t").then(|| "struct mi_heap_area_s".into()));
 
     if version == "v3" {
         cfg.header("mimalloc-stats.h").include(format!(
@@ -61,5 +63,5 @@ fn main() {
         ));
     }
 
-    cfg.generate("../src/lib.rs", "all.rs");
+    ctest::generate_test(&mut cfg, "../src/lib.rs", "all.rs").unwrap();
 }
