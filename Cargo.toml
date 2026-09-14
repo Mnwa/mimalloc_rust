@@ -23,7 +23,7 @@ members = [
 ]
 
 [dependencies]
-libmimalloc-sys3 = { path = "libmimalloc-sys", version = "0.1.51", default-features = false }
+libmimalloc-sys3 = { path = "libmimalloc-sys", version = "0.1.52", default-features = false }
 
 [features]
 default = []
