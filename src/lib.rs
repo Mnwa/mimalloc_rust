@@ -62,8 +62,10 @@ unsafe impl GlobalAlloc for MiMalloc {
     }
 
     #[inline]
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        unsafe { mi_free(ptr as *mut c_void) };
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe {
+            mi_free_size_aligned(ptr as *mut c_void, layout.size(), layout.align());
+        }
     }
 
     #[inline]

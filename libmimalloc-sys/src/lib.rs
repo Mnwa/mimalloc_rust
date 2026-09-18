@@ -63,6 +63,22 @@ unsafe extern "C" {
     ///
     /// The pointer `p` must have been allocated before (or be null).
     pub fn mi_free(p: *mut c_void);
+
+    /// Layout-aware deallocation: Like [`mi_free`], but accepts the size and
+    /// alignment as well.
+    ///
+    /// Note: unlike some allocators that require this information for
+    /// performance, mimalloc doesn't need it (as of the current version,
+    /// v2.0.0), and so it currently implements this as a (debug) assertion that
+    /// verifies that `p` is actually aligned to `alignment` and is usable for
+    /// at least `size` bytes, before delegating to `mi_free`.
+    ///
+    /// However, currently there's no way to have this crate enable mimalloc's
+    /// debug assertions, so these checks aren't particularly useful.
+    ///
+    /// Note: It's legal to pass null to this function, and you are not required
+    /// to use this to deallocate memory from an aligned allocation function.
+    pub fn mi_free_size_aligned(p: *mut c_void, size: usize, alignment: usize);
 }
 
 /// When using the `"override"` feature flag, the user wants us to globally
