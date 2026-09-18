@@ -7,7 +7,7 @@ Mimalloc is a general purpose, performance oriented allocator built by Microsoft
 
 > [!NOTE]
 > `mimalloc3` is the modern Rust 2024 edition package that tracks current stable
-> mimalloc releases. It currently uses mimalloc `v3.5.2` by default and provides
+> mimalloc releases. It currently uses mimalloc `v3.5.3` by default and provides
 > mimalloc `v2.5.2` through the `v2` feature. Automated update checks keep both
 > release lines current.
 
