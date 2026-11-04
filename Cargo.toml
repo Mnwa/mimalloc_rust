@@ -1,6 +1,6 @@
 [package]
 name = "mimalloc3"
-version = "0.1.59"
+version = "0.1.60"
 authors = [
     "Octavian Oncescu <octavonce@gmail.com>",
     "Vincent Rouillé <vincent@speedy37.fr>",
@@ -23,7 +23,7 @@ members = [
 ]
 
 [dependencies]
-libmimalloc-sys3 = { path = "libmimalloc-sys", version = "0.1.56", default-features = false }
+libmimalloc-sys3 = { path = "libmimalloc-sys", version = "0.1.57", default-features = false }
 
 [features]
 default = []
