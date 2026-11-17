@@ -1,7 +1,7 @@
 use crate::MiMalloc;
-use core::alloc::{AllocError, Allocator, Layout};
+use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
 use core::ffi::c_void;
-use core::ptr::{NonNull, write_bytes};
+use core::ptr::NonNull;
 use ffi::*;
 
 impl MiMalloc {
@@ -31,7 +31,7 @@ unsafe impl Allocator for MiMalloc {
         match layout.size() {
             0 => Ok(NonNull::slice_from_raw_parts(layout.dangling_ptr(), 0)),
             // Safety: the pointer passed to `tag_allocation` is either null or comes from mimalloc
-            _ => unsafe { Self::tag_allocation(mi_malloc_aligned(layout.size(), layout.align())) },
+            _ => unsafe { Self::tag_allocation(MiMalloc.alloc(layout) as *mut c_void) },
         }
     }
 
@@ -41,7 +41,7 @@ unsafe impl Allocator for MiMalloc {
             // Do nothing
             0 => {}
             // Safety: by the function preconditions, `ptr` came from this allocator
-            _ => unsafe { mi_free(ptr.as_ptr() as *mut _) },
+            _ => unsafe { MiMalloc.dealloc(ptr.as_ptr(), layout) },
         }
     }
 
@@ -50,7 +50,7 @@ unsafe impl Allocator for MiMalloc {
         match layout.size() {
             0 => Ok(NonNull::slice_from_raw_parts(layout.dangling_ptr(), 0)),
             // Safety: the pointer passed to `tag_allocation` is either null or comes from mimalloc
-            _ => unsafe { Self::tag_allocation(mi_zalloc_aligned(layout.size(), layout.align())) },
+            _ => unsafe { Self::tag_allocation(MiMalloc.alloc_zeroed(layout) as *mut c_void) },
         }
     }
 
@@ -68,8 +68,9 @@ unsafe impl Allocator for MiMalloc {
             (0, _) => self.allocate(new_layout),
             // Safety: by the function preconditions, `ptr` came from this allocator
             (_, _) => unsafe {
+                // `GlobalAlloc::realloc` keeps the old alignment, but `grow` may raise it
                 Self::tag_allocation(mi_realloc_aligned(
-                    ptr.as_ptr() as *mut _,
+                    ptr.as_ptr() as *mut c_void,
                     new_layout.size(),
                     new_layout.align(),
                 ))
@@ -84,25 +85,20 @@ unsafe impl Allocator for MiMalloc {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        let old_usable_size = match old_layout.size() {
-            0 => 0,
-            // Safety: `ptr` refers to a valid allocation from mimalloc
-            _ => unsafe { mi_usable_size(ptr.as_ptr() as *mut _) },
-        };
-
-        // Safety: by the function preconditions, `ptr` came from this allocator
-        let result = unsafe { self.grow(ptr, old_layout, new_layout)? };
-
-        // Safety: only bytes within the bounds of the new allocation are written
-        unsafe {
-            write_bytes(
-                result.cast::<u8>().add(old_usable_size).as_ptr(),
-                0,
-                result.len() - old_usable_size,
-            );
+        match old_layout.size() {
+            // `ptr` is dangling, there is nothing to reallocate
+            0 => self.allocate_zeroed(new_layout),
+            // Safety: by the function preconditions, `ptr` came from this allocator.
+            // `mi_rezalloc_aligned` preserves the old usable bytes and zeroes
+            // everything up to the usable size of the new block.
+            _ => unsafe {
+                Self::tag_allocation(mi_rezalloc_aligned(
+                    ptr.as_ptr() as *mut c_void,
+                    new_layout.size(),
+                    new_layout.align(),
+                ))
+            },
         }
-
-        Ok(result)
     }
 
     #[inline]
@@ -134,7 +130,12 @@ unsafe impl Allocator for MiMalloc {
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
+
     use super::*;
+    use alloc::boxed::Box;
+    use alloc::vec::Vec;
+    use core::mem::ManuallyDrop;
 
     #[test]
     fn it_frees_allocated_memory() {
@@ -180,6 +181,56 @@ mod tests {
         let ptr = MiMalloc.allocate(layout).unwrap();
         let ptr = unsafe { MiMalloc.grow(ptr.cast(), layout, new_layout).unwrap() };
         unsafe { MiMalloc.deallocate(ptr.cast(), new_layout) };
+    }
+
+    /// Allocates a zeroed vector, fills it with a marker, grows it with
+    /// `Allocator::grow_zeroed` and checks the contents of the resized vector.
+    fn check_grow_zeroed(old_len: usize, new_len: usize) {
+        const MARKER: u8 = 0xAB;
+
+        // Safety: all-zero bytes are a valid `u8`
+        let mut vec: Vec<u8, MiMalloc> =
+            unsafe { Box::new_zeroed_slice_in(old_len, MiMalloc).assume_init() }.into_vec();
+        assert_eq!(vec.len(), old_len);
+        assert!(vec.iter().all(|&b| b == 0));
+        vec.fill(MARKER);
+
+        let mut vec = ManuallyDrop::new(vec);
+        let old_layout = Layout::array::<u8>(vec.capacity()).unwrap();
+        let new_layout = Layout::array::<u8>(new_len).unwrap();
+        let ptr = NonNull::new(vec.as_mut_ptr()).unwrap();
+
+        // Safety: `ptr` was allocated by `MiMalloc` with `old_layout`
+        let grown = unsafe { MiMalloc.grow_zeroed(ptr, old_layout, new_layout).unwrap() };
+        assert!(grown.len() >= new_len);
+
+        // Safety: `grown` holds `new_len` initialized bytes and was allocated with `new_layout`
+        let vec = unsafe {
+            Vec::from_raw_parts_in(grown.cast::<u8>().as_ptr(), new_len, new_len, MiMalloc)
+        };
+        assert!(vec[..old_len].iter().all(|&b| b == MARKER));
+        assert!(vec[old_len..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn grow_zeroed_zeroes_new_memory() {
+        check_grow_zeroed(8, 100);
+    }
+
+    #[test]
+    fn grow_zeroed_zeroes_new_big_memory() {
+        check_grow_zeroed(1 << 20, 2 << 20);
+    }
+
+    #[test]
+    fn grow_zeroed_within_usable_size() {
+        // 10 bytes land in a bigger size class, so growing to 12 fits in place
+        check_grow_zeroed(10, 12);
+    }
+
+    #[test]
+    fn grow_zeroed_from_empty() {
+        check_grow_zeroed(0, 64);
     }
 
     #[test]
