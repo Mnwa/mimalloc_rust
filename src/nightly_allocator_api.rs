@@ -1,5 +1,5 @@
 use crate::MiMalloc;
-use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
+use core::alloc::{AllocError, Allocator, Layout};
 use core::ffi::c_void;
 use core::ptr::NonNull;
 use ffi::*;
@@ -31,7 +31,7 @@ unsafe impl Allocator for MiMalloc {
         match layout.size() {
             0 => Ok(NonNull::slice_from_raw_parts(layout.dangling_ptr(), 0)),
             // Safety: the pointer passed to `tag_allocation` is either null or comes from mimalloc
-            _ => unsafe { Self::tag_allocation(MiMalloc.alloc(layout) as *mut c_void) },
+            _ => unsafe { Self::tag_allocation(mi_malloc_aligned(layout.size(), layout.align())) },
         }
     }
 
@@ -41,7 +41,7 @@ unsafe impl Allocator for MiMalloc {
             // Do nothing
             0 => {}
             // Safety: by the function preconditions, `ptr` came from this allocator
-            _ => unsafe { MiMalloc.dealloc(ptr.as_ptr(), layout) },
+            _ => unsafe { mi_free(ptr.as_ptr() as *mut c_void) },
         }
     }
 
@@ -50,7 +50,7 @@ unsafe impl Allocator for MiMalloc {
         match layout.size() {
             0 => Ok(NonNull::slice_from_raw_parts(layout.dangling_ptr(), 0)),
             // Safety: the pointer passed to `tag_allocation` is either null or comes from mimalloc
-            _ => unsafe { Self::tag_allocation(MiMalloc.alloc_zeroed(layout) as *mut c_void) },
+            _ => unsafe { Self::tag_allocation(mi_zalloc_aligned(layout.size(), layout.align())) },
         }
     }
 
@@ -68,7 +68,6 @@ unsafe impl Allocator for MiMalloc {
             (0, _) => self.allocate(new_layout),
             // Safety: by the function preconditions, `ptr` came from this allocator
             (_, _) => unsafe {
-                // `GlobalAlloc::realloc` keeps the old alignment, but `grow` may raise it
                 Self::tag_allocation(mi_realloc_aligned(
                     ptr.as_ptr() as *mut c_void,
                     new_layout.size(),
