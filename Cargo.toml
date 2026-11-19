@@ -8,7 +8,7 @@ authors = [
     "Mnwa <mihan@panfilov.biz>",
 ]
 edition = "2024"
-repository = "https://github.com/purpleprotocol/mimalloc_rust"
+repository = "https://github.com/Mnwa/mimalloc_rust"
 keywords = ["mimalloc", "allocator", "encrypted-heap", "performance"]
 categories = ["memory-management", "api-bindings"]
 description = "Rust 2024 drop-in allocator backed by the latest stable mimalloc v3, with optional v2 support"
